@@ -96,6 +96,42 @@
       "path": "plugins/agent-unity-wrapper",
       "remote": "git@github.com:seretos-agents/agent-unity-wrapper.git",
       "branch": "main"
+    },
+    {
+      "name": "lib-python-vdesktop",
+      "path": "libs/lib-python-vdesktop",
+      "remote": "git@github.com:seretos-agents/lib-python-vdesktop.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-vdesktop",
+      "path": "plugins/agent-vdesktop",
+      "remote": "git@github.com:seretos-agents/agent-vdesktop.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-chrome-wrapper",
+      "path": "plugins/agent-chrome-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-chrome-wrapper.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-blender-wrapper",
+      "path": "plugins/agent-blender-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-blender-wrapper.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-meshy-wrapper",
+      "path": "plugins/agent-meshy-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-meshy-wrapper.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-line-feed-guard",
+      "path": "plugins/agent-line-feed-guard",
+      "remote": "git@github.com:seretos-agents/agent-line-feed-guard.git",
+      "branch": "main"
     }
   ]
 }

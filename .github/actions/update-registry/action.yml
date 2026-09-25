@@ -273,19 +273,134 @@ runs:
       if: inputs.mode == 'direct'
       shell: bash
       env:
-        GH_TOKEN:       ${{ inputs.gh_token }}
-        PLUGIN_NAME:    ${{ inputs.name }}
-        PLUGIN_VERSION: ${{ inputs.version }}
+        GH_TOKEN:        ${{ inputs.gh_token }}
+        PLUGIN_NAME:     ${{ inputs.name }}
+        PLUGIN_VERSION:  ${{ inputs.version }}
+        PLUGIN_REPO:     ${{ inputs.repo }}
+        PLUGIN_REF:      ${{ inputs.ref }}
+        PLUGIN_CATEGORY: ${{ inputs.category }}
+        PLUGIN_DESC:     ${{ inputs.description }}
+        PLUGIN_ICON:     ${{ inputs.icon }}
+        PLUGIN_DESCRIPTION_URL: ${{ inputs.description_url }}
+        PLUGIN_TAGS:            ${{ inputs.tags }}
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add .claude-plugin/marketplace.json .agents/plugins/marketplace.json
-        if git diff --cached --quiet; then
-          echo "No changes, skipping commit"
-          exit 0
-        fi
-        git commit -m "chore: update ${PLUGIN_NAME} to v${PLUGIN_VERSION}"
-        git push origin HEAD:"${GITHUB_REF_NAME}"
+
+        # Two plugin-release dispatches that land within the same few
+        # seconds both start from the branch tip the runner checked out at
+        # job start, so whichever pushes second gets a plain non-fast-
+        # forward rejection (observed in practice: concurrent releases of
+        # different plugins racing on this same `main`). A rebase can't
+        # safely resolve that here -- both commits touch the exact same two
+        # JSON files, often the same trailing lines of the same array, so a
+        # git-level merge is as likely to conflict as to succeed. Re-running
+        # the upsert fresh against the *current* remote tip on every retry
+        # sidesteps that entirely: there is no git history to reconcile,
+        # only "patch whatever main looks like right now and try to push
+        # again". Idempotent and safe to loop.
+        for attempt in 1 2 3 4 5; do
+          if [ "$attempt" -gt 1 ]; then
+            echo "push rejected, re-fetching main and re-applying the upsert (attempt $attempt/5)..."
+            git fetch origin "${GITHUB_REF_NAME}"
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+          fi
+
+          python3 - <<'EOF'
+        import json, os
+
+        name     = os.environ["PLUGIN_NAME"]
+        version  = os.environ["PLUGIN_VERSION"]
+        repo     = os.environ["PLUGIN_REPO"]
+        ref      = os.environ.get("PLUGIN_REF") or f"v{version}"
+        category = os.environ["PLUGIN_CATEGORY"]
+        desc     = os.environ["PLUGIN_DESC"]
+        icon     = (os.environ.get("PLUGIN_ICON") or "").strip()
+        description_url = (os.environ.get("PLUGIN_DESCRIPTION_URL") or "").strip()
+        raw_tags = (os.environ.get("PLUGIN_TAGS") or "").strip()
+        parsed_tags = json.loads(raw_tags) if raw_tags and raw_tags != "null" else None
+        if isinstance(parsed_tags, str):
+            parsed_tags = json.loads(parsed_tags)
+        tags = parsed_tags if isinstance(parsed_tags, list) else []
+
+        def find(plugins, name):
+            for p in plugins:
+                if p["name"] == name:
+                    return p
+            return None
+
+        def upsert(plugins, name, entry):
+            for i, p in enumerate(plugins):
+                if p["name"] == name:
+                    plugins[i] = entry
+                    return
+            plugins.append(entry)
+
+        claude_path = ".claude-plugin/marketplace.json"
+        with open(claude_path) as f:
+            claude_data = json.load(f)
+        claude_plugins = claude_data.setdefault("plugins", [])
+        claude_entry = {
+            "name":        name,
+            "description": desc,
+            "source":      {"source": "github", "repo": repo, "ref": ref},
+            "category":    category,
+            "version":     version,
+        }
+        existing = find(claude_plugins, name)
+        if not icon and existing:
+            icon = (existing.get("icon") or "").strip()
+        if icon:
+            claude_entry["icon"] = icon
+        if not description_url and existing:
+            description_url = (existing.get("description_url") or "").strip()
+        if description_url:
+            claude_entry["description_url"] = description_url
+        if not tags and existing:
+            tags = existing.get("tags") or []
+        if tags:
+            claude_entry["tags"] = tags
+        upsert(claude_plugins, name, claude_entry)
+        with open(claude_path, "w") as f:
+            json.dump(claude_data, f, indent=2)
+            f.write("\n")
+
+        codex_path = ".agents/plugins/marketplace.json"
+        with open(codex_path) as f:
+            codex_data = json.load(f)
+        codex_entry = {
+            "name": name,
+            "source": {
+                "source": "url",
+                "url":    f"https://github.com/{repo}.git",
+                "ref":    ref,
+            },
+            "policy":   {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+            "category": "Productivity",
+        }
+        upsert(codex_data.setdefault("plugins", []), name, codex_entry)
+        with open(codex_path, "w") as f:
+            json.dump(codex_data, f, indent=2)
+            f.write("\n")
+        EOF
+
+          git add .claude-plugin/marketplace.json .agents/plugins/marketplace.json
+          if git diff --cached --quiet; then
+            echo "No changes, skipping commit"
+            exit 0
+          fi
+          git commit -m "chore: update ${PLUGIN_NAME} to v${PLUGIN_VERSION}"
+
+          if git push origin HEAD:"${GITHUB_REF_NAME}"; then
+            exit 0
+          fi
+
+          if [ "$attempt" = "5" ]; then
+            echo "::error::failed to push after 5 attempts -- giving up"
+            exit 1
+          fi
+          sleep "$attempt"
+        done
 
     - name: Commit to feature branch and open PR
       if: inputs.mode == 'pr'

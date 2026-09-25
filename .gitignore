@@ -14,3 +14,9 @@ plugins/agent-comfy/
 plugins/agent-ticket-orchestrator/
 plugins/agent-autonomous-prompt-engineer/
 plugins/agent-unity-wrapper/
+libs/lib-python-vdesktop/
+plugins/agent-vdesktop/
+plugins/agent-chrome-wrapper/
+plugins/agent-blender-wrapper/
+plugins/agent-meshy-wrapper/
+plugins/agent-line-feed-guard/
