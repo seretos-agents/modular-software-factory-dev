@@ -1,2 +1,16 @@
 modular-software-factory/
 modular-software-factory-staging/
+libs/lib-python-harness/
+plugins/agent-harness/
+libs/lib-python-config/
+libs/lib-python-projects/
+libs/lib-python-worktree/
+libs/lib-python-comfy/
+plugins/agent-project-issues/
+plugins/agent-worktree/
+plugins/agent-autonomous-developer/
+plugins/agent-serena-wrapper/
+plugins/agent-comfy/
+plugins/agent-ticket-orchestrator/
+plugins/agent-autonomous-prompt-engineer/
+plugins/agent-unity-wrapper/

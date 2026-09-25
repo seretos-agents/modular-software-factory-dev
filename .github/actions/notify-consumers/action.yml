@@ -1,0 +1,62 @@
+name: 'Notify consumers of a new release'
+description: >-
+  Files (or reuses) a chore(deps) "bump me" ticket in every consumer repo of a
+  released lib, embedding the release changelog, applying only those of the
+  requested labels the consumer actually defines, and placing each new ticket
+  in Backlog on the ecosystem board. The single implementation shared by every
+  lib's release.yml and by the manual open-dep-ticket workflow in this repo.
+  Nothing here depends on a label, a board or a changelog existing: each is
+  best-effort and degrades to a warning; only a ticket that could not be
+  filed at all fails the action.
+
+inputs:
+  version:
+    description: 'Release version being announced (semver, no leading v)'
+    required: true
+  source_repo:
+    description: 'owner/repo of the released lib (changelog lookup, pin URL)'
+    required: true
+  consumers:
+    description: 'owner/repo per consumer, one per line (commas also work); empty = no-op with a notice'
+    required: false
+    default: ''
+  gh_token:
+    description: >-
+      Classic PAT with the repo scope (Issues: write on every consumer) and
+      the project scope (board placement). GITHUB_TOKEN cannot open
+      cross-repo issues. Callers pass secrets.ECOSYSTEM_TOKEN -- the
+      same secret name in every repo, defined once at organisation level
+      (seretos-agents).
+    required: true
+  labels:
+    description: >-
+      Comma-separated wish list. Labels the consumer does not define are
+      skipped with a warning, never created and never a failure.
+    required: false
+    default: 'ai-generated,task'
+  board_owner:
+    description: 'Owner of the user-owned Projects v2 board'
+    required: false
+    default: 'seretos-agents'
+  board_number:
+    description: 'Project number; empty disables the board placement'
+    required: false
+    default: '2'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      # ci/ sits next to this file; running from the action directory makes
+      # `python3 -m ci.notify` import it as `ci.*` whatever the caller's
+      # working directory is.
+      working-directory: ${{ github.action_path }}
+      env:
+        VERSION: ${{ inputs.version }}
+        SOURCE_REPO: ${{ inputs.source_repo }}
+        CONSUMERS: ${{ inputs.consumers }}
+        GH_TOKEN: ${{ inputs.gh_token }}
+        LABELS: ${{ inputs.labels }}
+        BOARD_OWNER: ${{ inputs.board_owner }}
+        BOARD_NUMBER: ${{ inputs.board_number }}
+      run: python3 -m ci.notify

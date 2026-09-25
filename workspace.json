@@ -1,0 +1,101 @@
+{
+  "description": "Workspace manifest listing the repos checked out as siblings under this parent working directory.",
+  "repos": [
+    {
+      "name": "modular-software-factory",
+      "path": "modular-software-factory",
+      "remote": "git@github.com:seretos-agents/modular-software-factory.git",
+      "branch": "main"
+    },
+    {
+      "name": "modular-software-factory-staging",
+      "path": "modular-software-factory-staging",
+      "remote": "git@github.com:seretos-agents/modular-software-factory-staging.git",
+      "branch": "main"
+    },
+    {
+      "name": "lib-python-harness",
+      "path": "libs/lib-python-harness",
+      "remote": "git@github.com:seretos-agents/lib-python-harness.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-harness",
+      "path": "plugins/agent-harness",
+      "remote": "git@github.com:seretos-agents/agent-harness.git",
+      "branch": "main"
+    },
+    {
+      "name": "lib-python-config",
+      "path": "libs/lib-python-config",
+      "remote": "git@github.com:seretos-agents/lib-python-config.git",
+      "branch": "main"
+    },
+    {
+      "name": "lib-python-projects",
+      "path": "libs/lib-python-projects",
+      "remote": "git@github.com:seretos-agents/lib-python-projects.git",
+      "branch": "main"
+    },
+    {
+      "name": "lib-python-worktree",
+      "path": "libs/lib-python-worktree",
+      "remote": "git@github.com:seretos-agents/lib-python-worktree.git",
+      "branch": "main"
+    },
+    {
+      "name": "lib-python-comfy",
+      "path": "libs/lib-python-comfy",
+      "remote": "git@github.com:seretos-agents/lib-python-comfy.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-project-issues",
+      "path": "plugins/agent-project-issues",
+      "remote": "git@github.com:seretos-agents/agent-project-issues.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-worktree",
+      "path": "plugins/agent-worktree",
+      "remote": "git@github.com:seretos-agents/agent-worktree.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-autonomous-developer",
+      "path": "plugins/agent-autonomous-developer",
+      "remote": "git@github.com:seretos-agents/agent-autonomous-developer.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-serena-wrapper",
+      "path": "plugins/agent-serena-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-serena-wrapper.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-comfy",
+      "path": "plugins/agent-comfy",
+      "remote": "git@github.com:seretos-agents/agent-comfy.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-ticket-orchestrator",
+      "path": "plugins/agent-ticket-orchestrator",
+      "remote": "git@github.com:seretos-agents/agent-ticket-orchestrator.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-autonomous-prompt-engineer",
+      "path": "plugins/agent-autonomous-prompt-engineer",
+      "remote": "git@github.com:seretos-agents/agent-autonomous-prompt-engineer.git",
+      "branch": "main"
+    },
+    {
+      "name": "agent-unity-wrapper",
+      "path": "plugins/agent-unity-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-unity-wrapper.git",
+      "branch": "main"
+    }
+  ]
+}

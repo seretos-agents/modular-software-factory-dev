@@ -1,0 +1,324 @@
+name: 'Update plugin marketplace registry'
+description: >-
+  Shared implementation for the seretos-agents marketplace repos
+  (modular-software-factory, modular-software-factory-staging). Upserts a
+  plugin entry into .claude-plugin/marketplace.json (Claude Code format) and
+  .agents/plugins/marketplace.json (Codex format), then either commits
+  straight to the default branch (mode: direct, used by the staging
+  marketplace) or opens a review PR (mode: pr, used by the main marketplace)
+  -- the two marketplaces differ only in this last step. Must run after
+  actions/checkout of the calling repo; the calling workflow forwards its
+  repository_dispatch client_payload as inputs.
+
+inputs:
+  name:
+    description: 'Plugin name (registry key, upsert by this)'
+    required: true
+  version:
+    description: 'Plugin version being announced (semver, no leading v)'
+    required: true
+  repo:
+    description: 'owner/repo of the plugin being registered'
+    required: true
+  ref:
+    description: 'git ref to install (tag/branch/sha); defaults to v{version}'
+    required: false
+    default: ''
+  category:
+    description: 'Registry category (e.g. mcp, skill, hook)'
+    required: true
+  description:
+    description: 'Plugin description'
+    required: true
+  icon:
+    description: >-
+      Optional, catalog-only, Claude registry only. Omit to leave an existing
+      icon untouched; a non-empty value always wins.
+    required: false
+    default: ''
+  description_url:
+    description: 'Optional, same gradual-rollout / preserve-on-omit rule as icon.'
+    required: false
+    default: ''
+  tags:
+    description: 'JSON array as a string, e.g. ["mcp","windows"]. Same preserve-on-omit rule as icon.'
+    required: false
+    default: ''
+  changelog:
+    description: >-
+      Free-form markdown release notes. PR-body only (mode: pr) -- never
+      written to either registry file, and ignored entirely in mode: direct.
+    required: false
+    default: ''
+  mode:
+    description: "'direct' commits straight to the default branch; 'pr' opens a review PR"
+    required: true
+  gh_token:
+    description: >-
+      Token with contents:write (and, for mode: pr, pull-requests:write) on
+      the calling repo. Callers pass secrets.ECOSYSTEM_TOKEN -- the same
+      secret name in every repo across the ecosystem, defined once at
+      organisation level, rather than relying on the repo-local
+      GITHUB_TOKEN. Passing it here covers the `gh` CLI calls (gh pr
+      create); the caller's own actions/checkout step must also set
+      `with: token: secrets.ECOSYSTEM_TOKEN` so plain `git push`
+      authenticates the same way.
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate mode
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        if [[ "$MODE" != "direct" && "$MODE" != "pr" ]]; then
+          echo "::error::mode must be 'direct' or 'pr', got '$MODE'."
+          exit 1
+        fi
+
+    - name: Update marketplace registries (Claude + Codex)
+      shell: bash
+      env:
+        PLUGIN_NAME:     ${{ inputs.name }}
+        PLUGIN_VERSION:  ${{ inputs.version }}
+        PLUGIN_REPO:     ${{ inputs.repo }}
+        PLUGIN_REF:      ${{ inputs.ref }}
+        PLUGIN_CATEGORY: ${{ inputs.category }}
+        PLUGIN_DESC:     ${{ inputs.description }}
+        PLUGIN_ICON:     ${{ inputs.icon }}
+        PLUGIN_DESCRIPTION_URL: ${{ inputs.description_url }}
+        PLUGIN_TAGS:            ${{ inputs.tags }}
+      run: |
+        python3 - <<'EOF'
+        import json, os
+
+        name     = os.environ["PLUGIN_NAME"]
+        version  = os.environ["PLUGIN_VERSION"]
+        repo     = os.environ["PLUGIN_REPO"]
+        # ref defaults to v{version} (the tag the plugin's release.yml created),
+        # but the dispatcher may override it (e.g. "release" branch HEAD for
+        # rolling installs, or a SHA for pinned-by-commit installs).
+        ref      = os.environ.get("PLUGIN_REF") or f"v{version}"
+        category = os.environ["PLUGIN_CATEGORY"]
+        desc     = os.environ["PLUGIN_DESC"]
+        # Optional, plugin-side opt-in. Consumed only by our own catalog page;
+        # Claude Code and Codex ignore unrecognized fields.
+        icon     = (os.environ.get("PLUGIN_ICON") or "").strip()
+        description_url = (os.environ.get("PLUGIN_DESCRIPTION_URL") or "").strip()
+        # PLUGIN_TAGS arrives as a JSON array string, the literal "null"/"" when
+        # omitted, or -- to stay tolerant of a legacy payload -- a JSON-encoded
+        # string. Parse once, unwrap a double-encoded string, and keep it only
+        # if it's a list.
+        raw_tags = (os.environ.get("PLUGIN_TAGS") or "").strip()
+        parsed_tags = json.loads(raw_tags) if raw_tags and raw_tags != "null" else None
+        if isinstance(parsed_tags, str):
+            parsed_tags = json.loads(parsed_tags)
+        tags = parsed_tags if isinstance(parsed_tags, list) else []
+
+        def find(plugins, name):
+            for p in plugins:
+                if p["name"] == name:
+                    return p
+            return None
+
+        def upsert(plugins, name, entry):
+            for i, p in enumerate(plugins):
+                if p["name"] == name:
+                    plugins[i] = entry
+                    return
+            plugins.append(entry)
+
+        # Claude registry: source.source = "github", repo + ref.
+        claude_path = ".claude-plugin/marketplace.json"
+        with open(claude_path) as f:
+            claude_data = json.load(f)
+        claude_plugins = claude_data.setdefault("plugins", [])
+        claude_entry = {
+            "name":        name,
+            "description": desc,
+            "source":      {"source": "github", "repo": repo, "ref": ref},
+            "category":    category,
+            "version":     version,
+        }
+        # Backwards-compatible icon handling: a payload icon wins; if the
+        # payload omits one (plugin hasn't adopted icons yet), preserve any
+        # icon already in the registry rather than dropping it on re-release.
+        # The key is omitted entirely when there is no icon, so existing
+        # entries stay byte-for-byte unchanged.
+        existing = find(claude_plugins, name)
+        if not icon and existing:
+            icon = (existing.get("icon") or "").strip()
+        if icon:
+            claude_entry["icon"] = icon
+        # description_url and tags follow the exact same backwards-compatible
+        # rule as icon: a non-empty payload value wins, an omitted value
+        # preserves whatever is already in the registry, and the key is left
+        # out entirely when there is nothing to write.
+        if not description_url and existing:
+            description_url = (existing.get("description_url") or "").strip()
+        if description_url:
+            claude_entry["description_url"] = description_url
+        if not tags and existing:
+            tags = existing.get("tags") or []
+        if tags:
+            claude_entry["tags"] = tags
+        upsert(claude_plugins, name, claude_entry)
+        with open(claude_path, "w") as f:
+            json.dump(claude_data, f, indent=2)
+            f.write("\n")
+
+        # Codex registry: source.source = "url", url + ref (plugin at repo root).
+        # Categories and policies don't map 1:1 from the dispatch payload, so
+        # default to Productivity / AVAILABLE / ON_INSTALL. Maintainers can
+        # hand-edit either field in a follow-up PR if they need to override.
+        # icon/description_url/tags stay Claude-registry-only -- the Codex
+        # parser's tolerance for unknown fields is unverified.
+        codex_path = ".agents/plugins/marketplace.json"
+        with open(codex_path) as f:
+            codex_data = json.load(f)
+        codex_entry = {
+            "name": name,
+            "source": {
+                "source": "url",
+                "url":    f"https://github.com/{repo}.git",
+                "ref":    ref,
+            },
+            "policy":   {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+            "category": "Productivity",
+        }
+        upsert(codex_data.setdefault("plugins", []), name, codex_entry)
+        with open(codex_path, "w") as f:
+            json.dump(codex_data, f, indent=2)
+            f.write("\n")
+        EOF
+
+    - name: Build commit / PR body
+      shell: bash
+      env:
+        PLUGIN_NAME:    ${{ inputs.name }}
+        PLUGIN_VERSION: ${{ inputs.version }}
+        # Free-form markdown release notes from the plugin's release pipeline
+        # (normally the body of `gh api repos/{owner}/{repo}/releases/
+        # generate-notes`). Rendered into the PR body only (mode: pr) -- it is
+        # never written to either registry file, and unused in mode: direct.
+        PLUGIN_CHANGELOG: ${{ inputs.changelog }}
+      run: |
+        python3 - <<'EOF'
+        import json, os
+
+        name    = os.environ["PLUGIN_NAME"]
+        version = os.environ["PLUGIN_VERSION"]
+
+        # PLUGIN_CHANGELOG arrives as a JSON string, the literal "null"/"" when
+        # omitted, or a JSON array of lines (a caller may pass toJSON(...) of
+        # either shape). Decode once and normalise to plain text.
+        raw = os.environ.get("PLUGIN_CHANGELOG") or ""
+        try:
+            parsed = json.loads(raw) if raw.strip() and raw.strip() != "null" else None
+        except ValueError:
+            parsed = raw  # not JSON at all -- treat the raw value as the text
+        if isinstance(parsed, list):
+            parsed = "\n".join(str(item) for item in parsed)
+        changelog = parsed if isinstance(parsed, str) else (raw if raw.strip() not in ("", "null") else "")
+        changelog = changelog.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+        head = (
+            f"Automated registry update triggered by `{name}` release pipeline.\n"
+            f"\n"
+            f"**Plugin:** `{name}`\n"
+            f"**Version:** `{version}`\n"
+        )
+        tail = "\nReview `.claude-plugin/marketplace.json` and merge to publish the entry to the registry."
+
+        def render(cl):
+            return head + (f"\n## Changelog\n\n{cl}\n" if cl else "") + tail
+
+        # GitHub rejects a PR body over 65536 characters. Measure conservatively
+        # -- the API may store the body with CRLF line endings, which costs one
+        # extra character per line -- and trim only the changelog, on a line
+        # boundary, leaving a visible notice.
+        LIMIT  = 65536
+        MARGIN = 512
+        NOTICE = "\n\n_Changelog truncated -- the full release notes exceed GitHub's PR body limit. See the plugin's release page._"
+
+        def wire_len(s):
+            return len(s) + s.count("\n")
+
+        if changelog:
+            budget = LIMIT - MARGIN - wire_len(render("")) - wire_len(NOTICE)
+            if wire_len(changelog) > budget:
+                kept, used = [], 0
+                for line in changelog.split("\n"):
+                    cost = len(line) + 2  # line + CRLF, worst case
+                    if used + cost > budget:
+                        break
+                    kept.append(line)
+                    used += cost
+                changelog = ("\n".join(kept).rstrip() + NOTICE) if kept else NOTICE.strip()
+
+        body = render(changelog)
+
+        path = os.path.join(os.environ.get("RUNNER_TEMP") or "/tmp", "pr-body.md")
+        # No trailing newline (otherwise every future body would drift one byte
+        # from the historical one), newline="\n" so a local Windows run produces
+        # identical bytes to the runner.
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(body)
+        print(f"Body: {len(body)} chars, changelog: {'yes' if changelog else 'no'} -> {path}")
+        EOF
+
+    - name: Commit directly to the default branch
+      if: inputs.mode == 'direct'
+      shell: bash
+      env:
+        GH_TOKEN:       ${{ inputs.gh_token }}
+        PLUGIN_NAME:    ${{ inputs.name }}
+        PLUGIN_VERSION: ${{ inputs.version }}
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .claude-plugin/marketplace.json .agents/plugins/marketplace.json
+        if git diff --cached --quiet; then
+          echo "No changes, skipping commit"
+          exit 0
+        fi
+        git commit -m "chore: update ${PLUGIN_NAME} to v${PLUGIN_VERSION}"
+        git push origin HEAD:"${GITHUB_REF_NAME}"
+
+    - name: Commit to feature branch and open PR
+      if: inputs.mode == 'pr'
+      shell: bash
+      env:
+        GH_TOKEN:       ${{ inputs.gh_token }}
+        PLUGIN_NAME:    ${{ inputs.name }}
+        PLUGIN_VERSION: ${{ inputs.version }}
+      run: |
+        BRANCH="plugin-update/${PLUGIN_NAME}-v${PLUGIN_VERSION}"
+        # Written by "Build commit / PR body". Passed as a file because the
+        # changelog is multi-line markdown that cannot live in an inline
+        # --body argument and must never be shell-interpolated.
+        BODY_FILE="${RUNNER_TEMP:-/tmp}/pr-body.md"
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git checkout -b "$BRANCH"
+        git add .claude-plugin/marketplace.json .agents/plugins/marketplace.json
+        if git diff --cached --quiet; then
+          echo "No changes, skipping PR"
+          exit 0
+        fi
+        git commit -m "chore: update ${PLUGIN_NAME} to v${PLUGIN_VERSION}"
+        # Idempotent: force-push overwrites a stale branch from a previous
+        # run for the same version (e.g. when the workflow was re-triggered).
+        git push --force origin "$BRANCH"
+        # PR may also already exist for that branch -- only create if missing.
+        if gh pr view "$BRANCH" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          echo "PR for $BRANCH already exists -- leaving it open."
+        else
+          gh pr create \
+            --title "plugin: ${PLUGIN_NAME} v${PLUGIN_VERSION}" \
+            --body-file "$BODY_FILE" \
+            --base "${GITHUB_REF_NAME}" \
+            --head "$BRANCH"
+        fi

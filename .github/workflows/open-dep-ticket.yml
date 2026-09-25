@@ -1,0 +1,62 @@
+name: open-dep-ticket
+
+# Manual (re-)filing of the "bump me" tickets for a released lib. Same action
+# the libs call from their own release.yml, so a ticket filed here is
+# byte-identical to an automatic one. Use it when the automatic step was
+# skipped or failed (missing token, a consumer registered after the release),
+# and to verify a change to the action against an already existing release.
+#
+# Idempotent: an open issue with the exact title in a consumer is reused, so
+# running it twice is safe. A ticket that a human already closed is NOT
+# reused -- running this for a version whose ticket was closed files a new one.
+on:
+  workflow_dispatch:
+    inputs:
+      lib:
+        description: "Released lib (repo name under seretos-agents/), e.g. lib-python-projects"
+        required: true
+        type: string
+      version:
+        description: "Release version (semver, no leading v), e.g. 0.2.0"
+        required: true
+        type: string
+      consumers:
+        description: "owner/repo per consumer, one per line (commas also work)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  file-tickets:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          LIB: ${{ inputs.lib }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version '$VERSION' is not valid semver (expected MAJOR.MINOR.PATCH[-PRERELEASE], no leading v)."
+            exit 1
+          fi
+          if [[ ! "$LIB" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Lib '$LIB' must be a bare repo name, not owner/repo."
+            exit 1
+          fi
+
+      - name: Checkout
+        # The local action below resolves only once the repo is checked out.
+        uses: actions/checkout@v4
+
+      - name: Open dependency-update tickets in consumers
+        uses: ./.github/actions/notify-consumers
+        with:
+          version: ${{ inputs.version }}
+          source_repo: seretos-agents/${{ inputs.lib }}
+          consumers: ${{ inputs.consumers }}
+          gh_token: ${{ secrets.ECOSYSTEM_TOKEN }}
