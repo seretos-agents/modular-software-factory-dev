@@ -41,7 +41,7 @@ inputs:
   board_number:
     description: 'Project number; empty disables the board placement'
     required: false
-    default: '2'
+    default: '1'
 
 runs:
   using: 'composite'
