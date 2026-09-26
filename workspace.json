@@ -14,6 +14,12 @@
       "branch": "main"
     },
     {
+      "name": "ecosystem-statistics",
+      "path": "ecosystem-statistics",
+      "remote": "git@github.com:seretos-agents/ecosystem-statistics.git",
+      "branch": "main"
+    },
+    {
       "name": "lib-python-harness",
       "path": "libs/lib-python-harness",
       "remote": "git@github.com:seretos-agents/lib-python-harness.git",
