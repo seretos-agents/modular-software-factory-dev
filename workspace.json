@@ -138,6 +138,12 @@
       "path": "plugins/agent-line-feed-guard",
       "remote": "git@github.com:seretos-agents/agent-line-feed-guard.git",
       "branch": "main"
+    },
+    {
+      "name": "agent-godot-wrapper",
+      "path": "plugins/agent-godot-wrapper",
+      "remote": "git@github.com:seretos-agents/agent-godot-wrapper.git",
+      "branch": "main"
     }
   ]
 }

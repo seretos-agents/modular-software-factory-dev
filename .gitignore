@@ -21,3 +21,4 @@ plugins/agent-chrome-wrapper/
 plugins/agent-blender-wrapper/
 plugins/agent-meshy-wrapper/
 plugins/agent-line-feed-guard/
+plugins/agent-godot-wrapper/
